@@ -26,10 +26,11 @@ L'objectif est d'identifier différents états mentaux ou intentions à partir d
 
 ```text
 Classification_d_Intentions_BCI_sur_Signaux_EGG/
-│
-├── data/                    # Dossier contenant les fichiers de données brutes (.edf)
-├── src/                     # Scripts modulaires (prétraitement, features, modèles)
-├── main.py                  # Script principal d'exécution et de filtrage MNE
-├── index.html               # Interface web de démonstration en temps réel
-├── requirements.txt         # Dépendances du projet
-└── README.md                # Documentation du projet
+|
+├── eegmmidb-1.0.0/                     # Dossier contenant les fichiers de données brutes (.edf)
+├── templates/                          # Dossier contenant l'interface web (HTML, Tailwind, Chart.js) pour visualiser le signal et les prédictions en direct.
+    └── index.html                      # Interface web de démonstration en temps réel
+├── main.py                             # Script principal d'exécution et de filtrage MNE 
+├── app.py                              # Script principal Flask gérant le backend, le chargement du signal EEG et les routes de l'API.
+├── requirements.txt                    # Dépendances du projet
+└── README.md                           # Documentation du projet
