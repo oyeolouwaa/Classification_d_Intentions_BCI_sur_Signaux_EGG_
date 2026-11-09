@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Démo BCI - Classification d'Intentions EEG</title>
+    <!-- Tailwind CSS pour un design moderne et propre -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js pour les graphiques interactifs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <!-- En-tête -->
+    <header class="bg-slate-800 border-b border-slate-700 py-6 px-8 shadow-md">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold tracking-wide text-indigo-400">🧠 BCI EEG Intent Classification</h1>
+                <p class="text-sm text-slate-400 mt-1">Interface de Démonstration en Temps Réel - Analyse des signaux de l'EEG</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="status-badge" class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    En attente de connexion
+                </span>
+                <button id="btn-toggle" onclick="toggleSimulation()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-5 py-2 rounded-lg transition shadow-lg shadow-indigo-600/20 cursor-pointer">
+                    Démarrer la Démo
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenu Principal -->
+    <main class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
+        
+        <!-- Colonne 1 & 2 : Visualisation des Signaux EEG -->
+        <section class="lg:col-span-2 bg-slate-800/60 backdrop-blur border border-slate-700/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-slate-200">📊 Signal EEG en direct (Canal C3 / Mu Rhythm 8-30 Hz)</h2>
+                    <span class="text-xs text-slate-400 bg-slate-700/50 px-2.5 py-1 rounded">375.0 s (S001R04.edf)</span>
+                </div>
+                <div class="relative h-72 w-full">
+                    <canvas id="eegChart"></canvas>
+                </div>
+            </div>
+            <div class="mt-6 grid grid-cols-3 gap-4 border-t border-slate-700/60 pt-4 text-center">
+                <div>
+                    <span class="block text-xs text-slate-400">Électrodes</span>
+                    <span class="text-sm font-bold text-slate-200">64 Canaux</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400">Fréquence d'échantillonnage</span>
+                    <span class="text-sm font-bold text-slate-200">160 Hz</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400">Filtre appliqué</span>
+                    <span class="text-sm font-bold text-emerald-400">Passe-bande [8-30 Hz]</span>
+                </div>
+            </div>
+            <div class="bg-slate-800/60 backdrop-blur border border-slate-700/80 rounded-2xl p-6 shadow-xl mt-6">
+                <h2 class="text-lg font-semibold text-slate-200 mb-4">📈 Spectre de Fréquences (Puissance spectrale)</h2>
+                <div class="relative h-64 w-full">
+                    <canvas id="freqChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Colonne 3 : Panneau de Classification & Résultats -->
+        <section class="bg-slate-800/60 backdrop-blur border border-slate-700/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-slate-200 mb-4">🎯 Classification d'Intention</h2>
+                
+                <!-- État Prédit Actuel -->
+                <div class="bg-slate-900/80 border border-slate-700 rounded-xl p-4 mb-6 text-center shadow-inner">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 block mb-1">Intention Détectée</span>
+                    <span id="current-intent" class="text-2xl font-black text-indigo-400">T0 : Repos</span>
+                </div>
+
+                <!-- Graphique des Probabilités -->
+                <div class="mb-4">
+                    <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Distribution des Probabilités</h3>
+                    <div class="relative h-48 w-full">
+                        <canvas id="probChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Légende des États -->
+            <div class="border-t border-slate-700/60 pt-4 space-y-2 text-xs text-slate-300">
+                <div class="flex justify-between items-center bg-slate-900/40 p-2 rounded">
+                    <span class="font-mono text-indigo-400">T0</span>
+                    <span>État de repos / Baseline</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-900/40 p-2 rounded">
+                    <span class="font-mono text-indigo-400">T1</span>
+                    <span>Imagerie : Main gauche</span>
+                </div>
+                <div class="flex justify-between items-center bg-slate-900/40 p-2 rounded">
+                    <span class="font-mono text-indigo-400">T2</span>
+                    <span>Imagerie : Main droite</span>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Script de Simulation et Graphiques -->
+    <script>
+        let isRunning = false;
+        let simulationInterval = null;
+
+        // 1. Configuration du graphique EEG (Ligne)
+        const ctxEeg = document.getElementById('eegChart').getContext('2d');
+        const eegDataPoints = 40;
+        const initialLabels = Array.from({length: eegDataPoints}, (_, i) => i);
+        const initialValues = Array.from({length: eegDataPoints}, () => (Math.random() * 20 - 10));
+
+        const eegChart = new Chart(ctxEeg, {
+            type: 'line',
+            data: {
+                labels: initialLabels,
+                datasets: [{
+                    label: 'Amplitude (uV)',
+                    data: initialValues,
+                    borderColor: '#818cf8',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { display: false },
+                    y: { 
+                        min: -35, 
+                        max: 35, 
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8' }
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // 2. Configuration du graphique de Probabilités (Barres)
+        const ctxProb = document.getElementById('probChart').getContext('2d');
+        const probChart = new Chart(ctxProb, {
+            type: 'bar',
+            data: {
+                labels: ['T0 (Repos)', 'T1 (Gauche)', 'T2 (Droite)'],
+                datasets: [{
+                    data: [70, 15, 15],
+                    backgroundColor: ['#6366f1', '#38bdf8', '#c084fc'],
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                    y: { min: 0, max: 100, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // 3. Configuration du graphique de Fréquences (Spectre strict de 8 à 30 Hz : 12 points exacts)
+        const freqLabels = [8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]; 
+        const ctxFreq = document.getElementById('freqChart').getContext('2d');
+        const freqChart = new Chart(ctxFreq, {
+            type: 'line',
+            data: {
+                labels: freqLabels,
+                datasets: [{
+                    label: 'Puissance spectrale',
+                    data: [15, 25, 30, 24, 18, 15, 12, 10, 8, 7, 6, 5], // 12 valeurs initiales
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { 
+                        title: { display: true, text: 'Fréquence (Hz) — [8-13Hz: Mu | 13-30Hz: Bêta]', color: '#94a3b8' }, 
+                        ticks: { color: '#94a3b8' },
+                        grid: {
+                            color: function(context) {
+                                let val = freqLabels[context.index];
+                                if (val === 8 || val === 14 || val === 30) {
+                                    return 'rgba(239, 68, 68, 0.5)'; // Ligne rouge de repère aux frontières
+                                }
+                                return 'rgba(255, 255, 255, 0.05)';
+                            }
+                        }
+                    },
+                    y: { min: 0, max: 45, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // 4. Fonction pour démarrer / arrêter la simulation en direct
+        function toggleSimulation() {
+            const btn = document.getElementById('btn-toggle');
+            const statusBadge = document.getElementById('status-badge');
+            
+            isRunning = !isRunning;
+
+            if (isRunning) {
+                btn.textContent = "Arrêter la Démo";
+                btn.className = "bg-rose-600 hover:bg-rose-500 text-white font-medium px-5 py-2 rounded-lg transition shadow-lg shadow-rose-600/20 cursor-pointer";
+                statusBadge.textContent = "Flux en direct (Actif)";
+                statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+
+                simulationInterval = setInterval(() => {
+                    // A. Mettre à jour le signal EEG temporel
+                    const data = eegChart.data.datasets[0].data;
+                    data.shift();
+                    let newVal = (Math.sin(Date.now() / 200) * 12) + (Math.random() * 10 - 5);
+                    data.push(newVal);
+                    eegChart.update('none');
+
+                    // B. Profils d'intentions (strictement 12 valeurs chacun pour coller à freqLabels)
+                    const intents = [
+                        { 
+                            label: "T0 : Repos", 
+                            p: [75, 15, 10], 
+                            spectrum: [15, 25, 30, 24, 18, 15, 12, 10, 8, 7, 6, 5] 
+                        },
+                        { 
+                            label: "T1 : Imagerie Main Gauche", 
+                            p: [12, 78, 10], 
+                            spectrum: [35, 42, 28, 12, 8, 6, 5, 4, 4, 3, 3, 2] // Pic sur les ondes Mu (8-12 Hz)
+                        },
+                        { 
+                            label: "T2 : Imagerie Main Droite", 
+                            p: [15, 10, 75], 
+                            spectrum: [8, 10, 12, 18, 25, 32, 38, 28, 15, 10, 6, 4] // Pic sur les ondes Bêta (14-24 Hz)
+                        }
+                    ];
+                    
+                    // C. Changement périodique de l'intention simulée
+                    if (Math.random() > 0.6) {
+                        let randIndex = Math.floor(Math.random() * 3);
+                        let selected = intents[randIndex];
+
+                        // Mise à jour de l'affichage des probabilités et du texte
+                        probChart.data.datasets[0].data = selected.p;
+                        probChart.update();
+                        document.getElementById('current-intent').textContent = selected.label;
+
+                        // Mise à jour dynamique du spectre de fréquences sans décalage
+                        let noisySpectrum = selected.spectrum.map(val => Math.max(2, val + (Math.random() * 6 - 3)));
+                        freqChart.data.datasets[0].data = noisySpectrum;
+                        freqChart.update('none');
+                    }
+                }, 250);
+
+            } else {
+                btn.textContent = "Démarrer la Démo";
+                btn.className = "bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-5 py-2 rounded-lg transition shadow-lg shadow-indigo-600/20 cursor-pointer";
+                statusBadge.textContent = "En attente de connexion";
+                statusBadge.className = "px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30";
+                clearInterval(simulationInterval);
+            }
+        }
+    </script>
+</body>
+</html>
